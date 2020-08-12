@@ -1,0 +1,5 @@
+*.o
+test_ntt
+test_poly
+test_addition
+test_mult
