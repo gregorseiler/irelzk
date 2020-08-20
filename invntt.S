@@ -163,8 +163,8 @@ vmovdqa         %ymm7,(\off+96)*4(%rdi)
 .endm
 
 .text
-.global cdecl(invntt_tomont_avx)
-cdecl(invntt_tomont_avx):
+.global cdecl(invntt_avx)
+cdecl(invntt_avx):
 #consts
 vmovdqa		_8XQ*4(%rsi),%ymm0
 vpcmpeqd	%ymm1,%ymm1,%ymm1

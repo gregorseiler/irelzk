@@ -51,12 +51,13 @@ static void autobase(poly r[4], const poly *a, size_t off) {
 void product(poly *v, polyvecm *msg, const uint8_t chash[SYMBYTES]) {
   int i,j;
   uint64_t nonce = 0;
-  poly a[R], mprime, tmp;
-  poly alpha[4], beta[R];
+  poly a[3][R], mprime, tmp;
+  poly alpha[6], beta[R];
   aes256ctr_ctx aesctx;
 
+  //FIXME: Only once
   aes256ctr_init(&aesctx,chash,0);
-  for(i=0;i<4;i++) {
+  for(i=0;i<6;i++) {
     aes256ctr_select(&aesctx,nonce++);
     poly_uniform_preinit(&alpha[i],&aesctx);
   }
@@ -68,12 +69,12 @@ void product(poly *v, polyvecm *msg, const uint8_t chash[SYMBYTES]) {
   memset(v,0,sizeof(poly));
   memset(&msg->vec[M-2],0,sizeof(poly));
   for(i=0;i<4;i++) {
-    /* a_ij = \sigma^-j(<b_i,y_j>) */
-    autobase(a,&g[0].vec[i],M);
+    /* a_j = \sigma^-j(<b_i,y_j>) */
+    autobase(a[0],&g[0].vec[i],M);
 
     /* g0 */
     for(j=0;j<R;j++) {
-      poly_pointwise_montgomery(&tmp,&a[j],&a[j]);
+      poly_pointwise_montgomery(&tmp,&a[0][j],&a[0][j]);
       poly_pointwise_montgomery(&tmp,&tmp,&alpha[i]);
       poly_pointwise_montgomery(&tmp,&tmp,&beta[j]);
       poly_add(v,v,&tmp);
@@ -86,7 +87,7 @@ void product(poly *v, polyvecm *msg, const uint8_t chash[SYMBYTES]) {
       poly_sigmainv_ntt(&tmp,&mprime,j);
 
       for(int k=0;k<N;k++)
-        tmp.coeffs[k] *= a[j].coeffs[k];
+        tmp.coeffs[k] *= a[0][j].coeffs[k];
 
       poly_pointwise_montgomery(&tmp,&tmp,&alpha[i]);
       poly_pointwise_montgomery(&tmp,&tmp,&beta[j]);
@@ -94,9 +95,42 @@ void product(poly *v, polyvecm *msg, const uint8_t chash[SYMBYTES]) {
     }
   }
 
+  for(i=0;i<2;i++) {
+    /* a_ij */
+    for(j=0;j<3;j++)
+      autobase(a[j],&g[0].vec[4+2*j+i],M);
+
+    /* g0 */
+    for(j=0;j<R;j++) {
+      poly_pointwise_montgomery(&tmp,&a[0][j],&a[1][j]);
+      poly_pointwise_montgomery(&tmp,&tmp,&alpha[4+i]);
+      poly_pointwise_montgomery(&tmp,&tmp,&beta[j]);
+      poly_add(v,v,&tmp);
+    }
+
+    /* g1 */
+    poly_scale_montgomery(&mprime,&msg->vec[4+2+i],MONTSQ);
+    for(j=0;j<R;j++) {
+      poly_sigmainv_ntt(&tmp,&mprime,j);
+      poly_pointwise_montgomery(&tmp,&tmp,&a[0][j]);
+      poly_pointwise_montgomery(&tmp,&tmp,&alpha[4+i]);
+      poly_pointwise_montgomery(&tmp,&tmp,&beta[j]);
+      poly_sub(&msg->vec[M-2],&msg->vec[M-2],&tmp);
+    }
+    poly_scale_montgomery(&mprime,&msg->vec[4+0+i],MONTSQ);
+    for(j=0;j<R;j++) {
+      poly_sigmainv_ntt(&tmp,&mprime,j);
+      poly_pointwise_montgomery(&tmp,&tmp,&a[1][j]);
+      poly_sub(&tmp,&tmp,&a[2][j]);
+      poly_pointwise_montgomery(&tmp,&tmp,&alpha[4+i]);
+      poly_pointwise_montgomery(&tmp,&tmp,&beta[j]);
+      poly_sub(&msg->vec[M-2],&msg->vec[M-2],&tmp);
+    }
+  }
+
   poly_scale_montgomery(v,v,MONTSQ);
-  for(j=0;j<R;j++) {
-    poly_shift(&tmp,&g[j].vec[M-2],j);
+  for(i=0;i<R;i++) {
+    poly_shift(&tmp,&g[i].vec[M-2],i);
     poly_add(v,v,&tmp);
   }
   poly_freeze(v);
@@ -105,17 +139,17 @@ void product(poly *v, polyvecm *msg, const uint8_t chash[SYMBYTES]) {
 int product_verify(poly *v, const uint8_t chash[SYMBYTES], const poly c[R], const commrnd z[R],
                    const comm *tp, const commkey *ckp)
 {
-  int i,j;
+  int i,j,k;
   uint64_t nonce = 0;
-  poly f[R], tmp;
-  poly alpha[4], beta[R];
+  poly f[3][R], tmp;
+  poly alpha[6], beta[R];
   poly chat[R], cfull;
   polyvecl zshat[R];
   polyvecm zmhat[R];
   aes256ctr_ctx aesctx;
 
   aes256ctr_init(&aesctx,chash,0);
-  for(i=0;i<4;i++) {
+  for(i=0;i<6;i++) {
     aes256ctr_select(&aesctx,nonce++);
     poly_uniform_preinit(&alpha[i],&aesctx);
   }
@@ -143,24 +177,45 @@ int product_verify(poly *v, const uint8_t chash[SYMBYTES], const poly c[R], cons
   memset(v,0,sizeof(poly));
   for(i=0;i<4;i++) {
     for(j=0;j<R;j++) {
-      polyvecl_pointwise_acc_montgomery(&f[j],&ckp->bm[i],&zshat[j]);
+      polyvecl_pointwise_acc_montgomery(&f[0][j],&ckp->bm[i],&zshat[j]);
       poly_pointwise_montgomery(&tmp,&chat[j],&tp->tm.vec[i]);
-      poly_sub(&f[j],&f[j],&tmp);
-      poly_scale_montgomery(&f[j],&f[j],MONTSQ);
-      poly_add(&f[j],&f[j],&zmhat[j].vec[i]);
+      poly_sub(&f[0][j],&f[0][j],&tmp);
+      poly_scale_montgomery(&f[0][j],&f[0][j],MONTSQ);
+      poly_add(&f[0][j],&f[0][j],&zmhat[j].vec[i]);
     }
-    autobase(f,f,1);
+    autobase(f[0],f[0],1);
 
     for(j=0;j<R;j++) {
-      poly_add(&tmp,&f[j],&cfull);
-      poly_pointwise_montgomery(&f[j],&f[j],&tmp);
-      poly_pointwise_montgomery(&f[j],&f[j],&alpha[i]);
-      poly_pointwise_montgomery(&f[j],&f[j],&beta[j]);
-      poly_add(v,v,&f[j]);
+      poly_add(&tmp,&cfull,&f[0][j]);
+      poly_pointwise_montgomery(&tmp,&tmp,&f[0][j]);
+      poly_pointwise_montgomery(&tmp,&tmp,&alpha[i]);
+      poly_pointwise_montgomery(&tmp,&tmp,&beta[j]);
+      poly_add(v,v,&tmp);
     }
   }
-  poly_scale_montgomery(v,v,MONTSQ);
 
+  for(i=0;i<2;i++) {
+    for(j=0;j<3;j++) {
+      for(k=0;k<R;k++) {
+        polyvecl_pointwise_acc_montgomery(&f[j][k],&ckp->bm[4+2*j+i],&zshat[k]);
+        poly_pointwise_montgomery(&tmp,&chat[k],&tp->tm.vec[4+2*j+i]);
+        poly_sub(&f[j][k],&f[j][k],&tmp);
+        poly_scale_montgomery(&f[j][k],&f[j][k],MONTSQ);
+        poly_add(&f[j][k],&f[j][k],&zmhat[k].vec[4+2*j+i]);
+      }
+      autobase(f[j],f[j],1);
+    }
+    for(j=0;j<R;j++) {
+      poly_pointwise_montgomery(&f[2][j],&cfull,&f[2][j]);
+      poly_pointwise_montgomery(&tmp,&f[0][j],&f[1][j]);
+      poly_add(&tmp,&tmp,&f[2][j]);
+      poly_pointwise_montgomery(&tmp,&tmp,&alpha[4+i]);
+      poly_pointwise_montgomery(&tmp,&tmp,&beta[j]);
+      poly_add(v,v,&tmp);
+    }
+  }
+
+  poly_scale_montgomery(v,v,MONTSQ);
   for(j=0;j<R;j++) {
     polyvecl_pointwise_acc_montgomery(&tmp,&ckp->bm[M-2],&zshat[j]);
     poly_scale_montgomery(&tmp,&tmp,MONTSQ);

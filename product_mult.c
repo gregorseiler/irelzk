@@ -1,3 +1,4 @@
+#include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
 #include "params.h"
@@ -7,18 +8,29 @@
 #include "consts.h"
 #include "product.h"
 
-extern const commkey *ck;
-extern const commrnd y[R];
-extern const polyvecl yshat[R];
-extern const polyvecm ymhat[R];
+extern const polyvecm g[R];
 
-static void autobase(poly r[4], const poly a[4]) {
+static inline void poly_sigmainv_ntt(poly *r, const poly *a, int i) {
+  if(i == 0) *r = *a;
+  else if(i == 1) poly_sigma193_ntt(r,a);
+  else if(i == 2) poly_sigma129_ntt(r,a);
+  else if(i == 3) poly_sigma65_ntt(r,a);
+}
+
+static inline void poly_shift(poly *r, const poly *a, int i) {
+  if(i == 0) *r = *a;
+  else if(i == 1) poly_pointwise_montgomery(r,a,&nttx);
+  else if(i == 2) poly_pointwise_montgomery(r,a,&nttx2);
+  else if(i == 3) poly_pointwise_montgomery(r,a,&nttx3);
+}
+
+static void autobase(poly r[4], const poly a[4], size_t off) {
   poly b[4];
 
-  b[0] = a[0];
-  poly_pointwise_montgomery(&b[2],&a[2],&nttx2);
-  poly_pointwise_montgomery(&b[1],&a[1],&nttx);
-  poly_pointwise_montgomery(&b[3],&a[3],&nttx3);
+  b[0] = a[0*off];
+  poly_pointwise_montgomery(&b[1],&a[1*off],&nttx);
+  poly_pointwise_montgomery(&b[2],&a[2*off],&nttx2);
+  poly_pointwise_montgomery(&b[3],&a[3*off],&nttx3);
 
   poly_add(&r[0],&b[0],&b[2]);
   poly_add(&r[1],&b[1],&b[3]);
@@ -57,12 +69,7 @@ void product(poly *v, polyvecm *msg, const uint8_t chash[SYMBYTES]) {
   memset(&msg->vec[M-2],0,sizeof(poly));
   for(i=0;i<3;i++) {
     /* a_j = \sigma^-j(<b_i,y_j>) */
-    for(j=0;j<R;j++) {
-      polyvecl_pointwise_acc_montgomery(&a[0][j],&ck->bm[i],&yshat[j]);
-      poly_scale_montgomery(&a[0][j],&a[0][j],MONTSQ);
-      poly_add(&a[0][j],&a[0][j],&ymhat[j].vec[i]);
-    }
-    autobase(a[0],a[0]);
+    autobase(a[0],&g[0].vec[i],M);
 
     /* g0 */
     for(j=0;j<R;j++) {
@@ -76,10 +83,7 @@ void product(poly *v, polyvecm *msg, const uint8_t chash[SYMBYTES]) {
     for(j=0;j<N;j++)
       mprime.coeffs[j] = 1 - (msg->vec[i].coeffs[j] << 1);
     for(j=0;j<R;j++) {
-      if(j == 0) tmp = mprime;
-      else if(j == 1) poly_sigma193_ntt(&tmp,&mprime);
-      else if(j == 2) poly_sigma129_ntt(&tmp,&mprime);
-      else if(j == 3) poly_sigma65_ntt(&tmp,&mprime);
+      poly_sigmainv_ntt(&tmp,&mprime,j);
 
       for(int k=0;k<N;k++)
         tmp.coeffs[k] *= a[0][j].coeffs[k];
@@ -91,14 +95,8 @@ void product(poly *v, polyvecm *msg, const uint8_t chash[SYMBYTES]) {
   }
 
   /* a_ij */
-  for(i=0;i<3;i++) {
-    for(j=0;j<R;j++) {
-      polyvecl_pointwise_acc_montgomery(&a[i][j],&ck->bm[3+i],&yshat[j]);
-      poly_scale_montgomery(&a[i][j],&a[i][j],MONTSQ);
-      poly_add(&a[i][j],&a[i][j],&ymhat[j].vec[3+i]);
-    }
-    autobase(a[i],a[i]);
-  }
+  for(i=0;i<3;i++)
+    autobase(a[i],&g[0].vec[3+i],M);
 
   /* g0 */
   for(j=0;j<R;j++) {
@@ -111,10 +109,7 @@ void product(poly *v, polyvecm *msg, const uint8_t chash[SYMBYTES]) {
   /* g1 */
   poly_scale_montgomery(&mprime,&msg->vec[3+1],MONTSQ);
   for(j=0;j<R;j++) {
-    if(j == 0) tmp = mprime;
-    else if(j == 1) poly_sigma193_ntt(&tmp,&mprime);
-    else if(j == 2) poly_sigma129_ntt(&tmp,&mprime);
-    else if(j == 3) poly_sigma65_ntt(&tmp,&mprime);
+    poly_sigmainv_ntt(&tmp,&mprime,j);
     poly_pointwise_montgomery(&tmp,&tmp,&a[0][j]);
     poly_pointwise_montgomery(&tmp,&tmp,&alpha[3]);
     poly_pointwise_montgomery(&tmp,&tmp,&beta[j]);
@@ -122,10 +117,7 @@ void product(poly *v, polyvecm *msg, const uint8_t chash[SYMBYTES]) {
   }
   poly_scale_montgomery(&mprime,&msg->vec[3+0],MONTSQ);
   for(j=0;j<R;j++) {
-    if(j == 0) tmp = mprime;
-    else if(j == 1) poly_sigma193_ntt(&tmp,&mprime);
-    else if(j == 2) poly_sigma129_ntt(&tmp,&mprime);
-    else if(j == 3) poly_sigma65_ntt(&tmp,&mprime);
+    poly_sigmainv_ntt(&tmp,&mprime,j);
     poly_pointwise_montgomery(&tmp,&tmp,&a[1][j]);
     poly_sub(&tmp,&tmp,&a[2][j]);
     poly_pointwise_montgomery(&tmp,&tmp,&alpha[3]);
@@ -135,12 +127,7 @@ void product(poly *v, polyvecm *msg, const uint8_t chash[SYMBYTES]) {
 
   poly_scale_montgomery(v,v,MONTSQ);
   for(j=0;j<R;j++) {
-    polyvecl_pointwise_acc_montgomery(&tmp,&ck->bm[M-2],&yshat[j]);
-    poly_scale_montgomery(&tmp,&tmp,MONTSQ);
-    poly_add(&tmp,&tmp,&ymhat[j].vec[M-2]);
-    if(j == 1) poly_pointwise_montgomery(&tmp,&tmp,&nttx);
-    else if(j == 2) poly_pointwise_montgomery(&tmp,&tmp,&nttx2);
-    else if(j == 3) poly_pointwise_montgomery(&tmp,&tmp,&nttx3);
+    poly_shift(&tmp,&g[j].vec[M-2],j);
     poly_add(v,v,&tmp);
   }
   poly_freeze(v);
@@ -151,9 +138,9 @@ int product_verify(poly *v, const uint8_t chash[SYMBYTES], const poly c[R], cons
 {
   int i,j;
   uint64_t nonce = 0;
-  poly tmp, f[3][R];
-  poly chat[R], cfull;
+  poly f[3][R], tmp;
   poly alpha[4], beta[R];
+  poly chat[R], cfull;
   polyvecl zshat[R];
   polyvecm zmhat[R];
   aes256ctr_ctx aesctx;
@@ -193,7 +180,7 @@ int product_verify(poly *v, const uint8_t chash[SYMBYTES], const poly c[R], cons
       poly_scale_montgomery(&f[0][j],&f[0][j],MONTSQ);
       poly_add(&f[0][j],&f[0][j],&zmhat[j].vec[i]);
     }
-    autobase(f[0],f[0]);
+    autobase(f[0],f[0],1);
 
     for(j=0;j<R;j++) {
       poly_add(&tmp,&cfull,&f[0][j]);
@@ -212,7 +199,7 @@ int product_verify(poly *v, const uint8_t chash[SYMBYTES], const poly c[R], cons
       poly_scale_montgomery(&f[i][j],&f[i][j],MONTSQ);
       poly_add(&f[i][j],&f[i][j],&zmhat[j].vec[3+i]);
     }
-    autobase(f[i],f[i]);
+    autobase(f[i],f[i],1);
   }
   for(j=0;j<R;j++) {
     poly_pointwise_montgomery(&f[2][j],&cfull,&f[2][j]);
@@ -228,9 +215,7 @@ int product_verify(poly *v, const uint8_t chash[SYMBYTES], const poly c[R], cons
     polyvecl_pointwise_acc_montgomery(&tmp,&ckp->bm[M-2],&zshat[j]);
     poly_scale_montgomery(&tmp,&tmp,MONTSQ);
     poly_add(&tmp,&tmp,&zmhat[j].vec[M-2]);
-    if(j == 1) poly_pointwise_montgomery(&tmp,&tmp,&nttx);
-    else if(j == 2) poly_pointwise_montgomery(&tmp,&tmp,&nttx2);
-    else if(j == 3) poly_pointwise_montgomery(&tmp,&tmp,&nttx3);
+    poly_shift(&tmp,&tmp,j);
     poly_add(v,v,&tmp);
   }
   poly_pointwise_montgomery(&tmp,&cfull,&tp->tm.vec[M-2]);

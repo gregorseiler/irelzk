@@ -81,8 +81,7 @@ int main(void) {
   poly_uniform(&a,seed,1);
   b = a;
   poly_ntt(&a);
-  poly_invntt_tomont(&a);
-  poly_scale_montgomery(&a,&a,1);
+  poly_invntt(&a);
   for(i=0;i<N;++i)
     assert((a.coeffs[i] - b.coeffs[i]) % Q == 0);
 
@@ -94,7 +93,7 @@ int main(void) {
     printf("ntt: %2d: %lu\n", i+1, t[i+1] - t[i] - overhead);
   for(i=0;i<20;i++) {
     t[i] = cpucycles();
-    poly_invntt_tomont(&a);
+    poly_invntt(&a);
   }
   for(i=0;i<19;i++)
     printf("invntt: %2d: %lu\n", i, t[i+1] - t[i] - overhead);

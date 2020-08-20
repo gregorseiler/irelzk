@@ -8,6 +8,12 @@
 #include "polyvec.h"
 #include "consts.h"
 
+static const polyveck *t0low;
+static const commrnd *r;
+static const commkey *ck;
+static commrnd y[R];
+polyvecm g[R];
+
 void challenge_prehash(poly c[R], const uint8_t chash[N/4]) {
   int i, j;
   uint8_t b;
@@ -31,13 +37,6 @@ void challenge(poly c[R], const polyveck w[R]) {
   challenge_prehash(c,chash);
 }
 
-const polyveck *t0low;
-const commrnd *r;
-const commkey *ck;
-commrnd y[R];
-polyvecl yshat[R];
-polyvecm ymhat[R];
-
 void opening_init(const polyveck *t0lowp, const commrnd *rp, const commkey *ckp) {
   t0low = t0lowp;
   r = rp;
@@ -55,29 +54,27 @@ void opening_first(polyveck w1[4], const uint8_t seed[SYMBYTES], uint16_t nonce)
       aes256ctr_select(&state,nonce++);
       poly_uniform_gamma_preinit(&y[i].s.vec[j],&state);
     }
-    //for(j=0;j<K;j++) {
-    //  aes256ctr_select(&state,nonce++);
-    //  poly_uniform_gamma_preinit(&y[i].e.vec[j],&state);
-    //}
     for(j=0;j<M;j++) {
       aes256ctr_select(&state,nonce++);
       poly_uniform_gamma_preinit(&y[i].em.vec[j],&state);
     }
 
-    yshat[i] = y[i].s;
-    ymhat[i] = y[i].em;
-    polyvecl_ntt(&yshat[i]);
-    polyvecm_ntt(&ymhat[i]);
+    polyvecl_ntt(&y[i].s);
+    polyvecm_ntt(&y[i].em);
+
     for(j=0;j<K;j++)
-      polyvecl_pointwise_acc_montgomery(&w1[i].vec[j],&ck->b0[j],&yshat[i]);
+      polyvecl_pointwise_acc_montgomery(&w1[i].vec[j],&ck->b0[j],&y[i].s);
     for(j=0;j<K;j++) {
-      polyvecm_pointwise_acc_montgomery(&tmp,&ck->bt[j],&ymhat[i]);
+      polyvecm_pointwise_acc_montgomery(&tmp,&ck->bt[j],&y[i].em);
       poly_add(&w1[i].vec[j],&w1[i].vec[j],&tmp);
     }
     polyveck_invntt_tomont(&w1[i]);
-    //polyveck_add(&w1[i],&w1[i],&y[i].e);
-    //polyveck_freeze(&w1[i]);
     polyveck_decompose(&w1[i],&y[i].e,&w1[i]);
+
+    for(j=0;j<M;j++)
+      polyvecl_pointwise_acc_montgomery(&g[i].vec[j],&ck->bm[j],&y[i].s);
+    polyvecm_scale_montgomery(&g[i],&g[i],MONTSQ);
+    polyvecm_add(&g[i],&g[i],&y[i].em);
   }
 }
 
@@ -88,28 +85,31 @@ int opening_last(commrnd z[R], const poly c[R], const polyveck w1[R]) {
   for(i=0;i<R;i++) {
     chat[i] = c[i];
     poly_ntt(&chat[i]);
+    poly_scale_montgomery(&chat[i],&chat[i],MONTSQ);
   }
 
   for(i=0;i<R;i++) {
     for(j=0;j<L;j++)
       poly_pointwise_montgomery(&z[i].s.vec[j],&chat[i],&r->s.vec[j]);
-    polyvecl_invntt_tomont(&z[i].s);
     polyvecl_add(&z[i].s,&z[i].s,&y[i].s);
+    polyvecl_invntt(&z[i].s);
+    for(j=0;j<L;j++)
+      poly_reduce(&z[i].s.vec[j]);
     if(polyvecl_chknorm(&z[i].s,GAMMA1-BETA))
       return 1;
 
     for(j=0;j<M;j++)
       poly_pointwise_montgomery(&z[i].em.vec[j],&chat[i],&r->em.vec[j]);
-    polyvecm_invntt_tomont(&z[i].em);
     polyvecm_add(&z[i].em,&z[i].em,&y[i].em);
+    polyvecm_invntt(&z[i].em);
+    for(j=0;j<M;j++)
+      poly_reduce(&z[i].em.vec[j]);
     if(polyvecm_chknorm(&z[i].em,GAMMA1-BETA))
       return 1;
 
     for(j=0;j<K;j++)
       poly_pointwise_montgomery(&z[i].e.vec[j],&chat[i],&r->e.vec[j]);
-    polyveck_invntt_tomont(&z[i].e);
-    //polyveck_add(&z[i].e,&z[i].e,&y[i].e);
-    //ret |= polyveck_chknorm(&z[i].e,GAMMA1-BETA);
+    polyveck_invntt(&z[i].e);
     polyveck_sub(&y[i].e,&y[i].e,&z[i].e);
     if(polyveck_chknorm(&y[i].e,GAMMA2-BETA))
       return 1;
@@ -118,7 +118,7 @@ int opening_last(commrnd z[R], const poly c[R], const polyveck w1[R]) {
   for(i=0;i<R;i++) {
     for(j=0;j<K;j++)
       poly_pointwise_montgomery(&z[i].e.vec[j],&chat[i],&t0low->vec[j]);
-    polyveck_invntt_tomont(&z[i].e);
+    polyveck_invntt(&z[i].e);
     if(polyveck_chknorm(&z[i].e,GAMMA2)) return 1;
     polyveck_add(&y[i].e,&y[i].e,&z[i].e);
     polyveck_makehint(&z[i].e,&w1[i],&y[i].e);
@@ -138,8 +138,6 @@ int opening_verify_first(polyveck w1[R], const poly c[R], const commrnd z[R],
   for(i=0;i<R;i++) {
     if(polyvecl_chknorm(&z[i].s,GAMMA1-BETA))
       return 1;
-    //if(polyveck_chknorm(&z[i].e,GAMMA2-BETA))
-    //  return 1;
     if(polyvecm_chknorm(&z[i].em,GAMMA1-BETA))
       return 1;
   }
@@ -165,8 +163,6 @@ int opening_verify_first(polyveck w1[R], const poly c[R], const commrnd z[R],
     }
 
     polyveck_invntt_tomont(&w1[i]);
-    //polyveck_add(&w1[i],&w1[i],&z[i].e);
-    //polyveck_freeze(&w1[i]);
     polyveck_usehint(&w1[i],&w1[i],&z[i].e);
   }
 

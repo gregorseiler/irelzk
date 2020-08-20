@@ -264,12 +264,12 @@ void poly_ntt(poly *r) {
 
 void poly_invntt(poly *r) {
   poly_scale_montgomery(r,r,33554432);
-  invntt_tomont_avx(r->coeffs,qdata);
+  invntt_avx(r->coeffs,qdata);
 }
 
 void poly_invntt_tomont(poly *r) {
   poly_scale_montgomery(r,r,-132153352);
-  invntt_tomont_avx(r->coeffs,qdata);
+  invntt_avx(r->coeffs,qdata);
 }
 
 void poly_pointwise_montgomery(poly *r, const poly *a, const poly *b)
@@ -345,8 +345,8 @@ void poly_invntt2(poly r[2]) {
   int i;
   __m256i f0,f1,f2;
 
-  invntt_tomont_avx(r[0].coeffs,qdata);
-  invntt_tomont_avx(r[1].coeffs,qdata);
+  invntt_avx(r[0].coeffs,qdata);
+  invntt_avx(r[1].coeffs,qdata);
   poly_pointwise_montgomery(&r[0],&r[0],&invtwist);
 
   for(i=0;i<N/8;i++) {

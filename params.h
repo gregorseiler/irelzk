@@ -1,8 +1,9 @@
 #ifndef PARAMS_H
 #define PARAMS_H
 
-//#define MULTIPLICATION_PROOF
 //#define ADDITION_PROOF
+//#define MULTIPLICATION_PROOF
+//#define MULTIPLICATION_PROOF_2
 
 #define NAMESPACE(s) s
 
@@ -10,6 +11,8 @@
 #define M 6
 #elif defined(MULTIPLICATION_PROOF)
 #define M 10
+#elif defined(MULTIPLICATION_PROOF_2)
+#define M 15
 #endif
 
 #define N 128

@@ -77,7 +77,7 @@ int apprshort_last(poly *l, const polyvecm *msg) {
     for(j=0;j<N/32;j++) {
       g = _mm256_set1_epi32(challenge[i][j]);
       for(k=0;k<4;k++) {
-        f = _mm256_load_si256((__m256i *)&msg->vec[6].coeffs[32*j+8*k]);
+        f = _mm256_load_si256((__m256i *)&msg->vec[M-4].coeffs[32*j+8*k]);
         h = _mm256_and_si256(g,mask);
         h = _mm256_cmpeq_epi32(h,mask);
         f = _mm256_and_si256(f,h);

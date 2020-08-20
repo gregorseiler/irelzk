@@ -1,6 +1,9 @@
 #include <stdint.h>
 #include <string.h>
 #include <immintrin.h>
+#ifdef __GNUC__
+# include <adxintrin.h>
+#endif
 #include "fips202.h"
 #include "randombytes.h"
 #include "params.h"
@@ -19,7 +22,9 @@ void multiplication_proof(proof *p, comm *t, commrnd *r, const uint8_t rho[SYMBY
 {
   int i, rej;
   uint16_t nonce = 0;
-  uint64_t c[2];
+  uint64_t c[4];
+  unsigned long long t0, t1;
+  unsigned char carry;
   uint8_t symbuf[2*SYMBYTES+SHAKE128_RATE];
   uint8_t *seed = symbuf;
   uint8_t *thash = symbuf+SYMBYTES;
@@ -32,29 +37,50 @@ void multiplication_proof(proof *p, comm *t, commrnd *r, const uint8_t rho[SYMBY
 
   randombytes(seed,SYMBYTES);
 
-  c[0] = _mulx_u64(a[0],b[0],(unsigned long long int *)&c[1]);
-  memset(&msg,0,2*sizeof(poly));
+  c[0] = _mulx_u64(a[0],b[0],(unsigned long long *)&c[1]);
+  t0 = _mulx_u64(a[0],b[1],(unsigned long long *)&c[2]);
+  carry = _addcarry_u64(0,c[1],t0,(unsigned long long *)&c[1]);
+  t0 = _mulx_u64(a[1],b[1],(unsigned long long *)&c[3]);
+  c[3] += _addcarry_u64(carry,c[2],t0,(unsigned long long *)&c[2]);
+  t0 = _mulx_u64(a[1],b[0],&t1);
+  carry = _addcarry_u64(0,c[1],t0,(unsigned long long *)&c[1]);
+  c[3] += _addcarry_u64(carry,c[2],t1,(unsigned long long *)&c[2]);
+
   for(i=0;i<64;i++) {
     msg.vec[0].coeffs[i] = (a[0] >> i) & 1;
+    msg.vec[0].coeffs[64+i] = (a[1] >> i) & 1;
     msg.vec[1].coeffs[i] = (b[0] >> i) & 1;
+    msg.vec[1].coeffs[64+i] = (b[1] >> i) & 1;
     msg.vec[2].coeffs[i] = (c[0] >> i) & 1;
     msg.vec[2].coeffs[64+i] = (c[1] >> i) & 1;
+    msg.vec[3].coeffs[i] = (c[2] >> i) & 1;
+    msg.vec[3].coeffs[64+i] = (c[3] >> i) & 1;
   }
 
-  msg.vec[3] = msg.vec[0];
-  msg.vec[4] = msg.vec[1];
-  poly_ntt(&msg.vec[3]);
-  poly_ntt(&msg.vec[4]);
-  poly_pointwise_montgomery(&msg.vec[5],&msg.vec[3],&msg.vec[4]);
-  poly_scale_montgomery(&msg.vec[5],&msg.vec[5],MONTSQ);
-  msg.vec[6] = msg.vec[5];
-  poly_invntt(&msg.vec[6]);
-  poly_sub(&msg.vec[6],&msg.vec[2],&msg.vec[6]);
-  poly_freeze(&msg.vec[6]);
+  msg.vec[4] = msg.vec[0];
+  memset(&msg.vec[5],0,sizeof(poly));
+  msg.vec[6] = msg.vec[1];
+  memset(&msg.vec[7],0,sizeof(poly));
+  poly_ntt2(&msg.vec[4]);
+  poly_ntt2(&msg.vec[6]);
+  poly_pointwise_montgomery(&msg.vec[8],&msg.vec[4],&msg.vec[6]);
+  poly_pointwise_montgomery(&msg.vec[9],&msg.vec[5],&msg.vec[7]);
+  poly_scale_montgomery(&msg.vec[8],&msg.vec[8],MONTSQ);
+  poly_scale_montgomery(&msg.vec[9],&msg.vec[9],MONTSQ);
+  msg.vec[10] = msg.vec[8];
+  msg.vec[11] = msg.vec[9];
+  poly_invntt2(&msg.vec[10]);
+  poly_sub(&msg.vec[10],&msg.vec[2],&msg.vec[10]);
+  poly_sub(&msg.vec[11],&msg.vec[3],&msg.vec[11]);
+  poly_freeze(&msg.vec[10]);
+  poly_freeze(&msg.vec[11]);
 
-  msg.vec[6].coeffs[0] = 0;
+  msg.vec[10].coeffs[0] = 0;
   for(i=1;i<128;i++)
-    msg.vec[6].coeffs[i] = (msg.vec[6].coeffs[i-1] - msg.vec[6].coeffs[i]) >> 1;
+    msg.vec[10].coeffs[i] = (msg.vec[10].coeffs[i-1] - msg.vec[10].coeffs[i]) >> 1;
+  msg.vec[11].coeffs[0] = (msg.vec[10].coeffs[127] - msg.vec[11].coeffs[0]) >> 1;
+  for(i=1;i<128;i++)
+    msg.vec[11].coeffs[i] = (msg.vec[11].coeffs[i-1] - msg.vec[11].coeffs[i]) >> 1;
 
   memset(&msg.vec[M-3],0,sizeof(poly));
   memset(&msg.vec[M-2],0,sizeof(poly));

@@ -14,23 +14,24 @@ void expand_commkey(commkey *ck, const uint8_t rho[SYMBYTES]) {
   aes256ctr_ctx state;
 
   aes256ctr_init(&state,rho,0);
-  for(i=0;i<K;i++)
+  for(i=0;i<K;i++) {
     for(j=0;j<L;j++) {
       aes256ctr_select(&state,(i << 16) + j);
       poly_uniform_preinit(&ck->b0[i].vec[j], &state);
     }
-
-  for(i=0;i<K;i++)
+  }
+  for(i=0;i<K;i++) {
     for(j=0;j<M;j++) {
       aes256ctr_select(&state,((K+i) << 16) + j);
       poly_uniform_preinit(&ck->bt[i].vec[j], &state);
     }
-
-  for(i=0;i<M;i++)
+  }
+  for(i=0;i<M;i++) {
     for(j=0;j<L;j++) {
       aes256ctr_select(&state,((2*K+i) << 16) + j);
       poly_uniform_preinit(&ck->bm[i].vec[j], &state);
     }
+  }
 }
 
 void commit(comm *t, commrnd *r, const polyvecm *msg, const commkey *ck) {
@@ -61,10 +62,10 @@ void commit(comm *t, commrnd *r, const polyvecm *msg, const commkey *ck) {
 
   for(i=0;i<K;i++)
     polyvecl_pointwise_acc_montgomery(&t->t0.vec[i],&ck->b0[i],&r->s);
-  for(i=0;i<K;i++)
-    polyvecm_pointwise_acc_montgomery(&tag.vec[i],&ck->bt[i],&r->em);
   for(i=0;i<M;i++)
     polyvecl_pointwise_acc_montgomery(&t->tm.vec[i],&ck->bm[i],&r->s);
+  for(i=0;i<K;i++)
+    polyvecm_pointwise_acc_montgomery(&tag.vec[i],&ck->bt[i],&r->em);
 
   polyveck_add(&t->t0,&t->t0,&tag);
   polyveck_scale_montgomery(&t->t0,&t->t0,MONTSQ);
