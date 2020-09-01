@@ -83,7 +83,7 @@ void addition_proof(proof *p, comm *t, commrnd *r, const uint8_t rho[SYMBYTES],
 
     product(&v,&msg,chash);
     poly_add(&tmp,&t->tm.vec[M-2],&msg.vec[M-2]);
-    linear(&p->h,vprime,&msg,chash+SYMBYTES);
+    linear(vprime,&p->h,&msg,chash+SYMBYTES);
     shake128_init(&kecst);
     shake128_absorb(&kecst,chash,2*SYMBYTES);
     shake128_absorb(&kecst,(uint8_t *)&tmp,sizeof(poly));

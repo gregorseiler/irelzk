@@ -43,7 +43,7 @@ void linear_challenge_prehash(const uint8_t chash[SYMBYTES]) {
   }
 }
 
-void linear(poly *h, poly vprime[R], const polyvecm *msg, const poly *l, uint8_t chash[SYMBYTES]) {
+void linear(poly vprime[R], poly *h, const polyvecm *msg, const poly *l, uint8_t chash[SYMBYTES]) {
   int i,j,k;
   uint64_t nonce = 0;
   poly gamma, atgamma, btgamma;

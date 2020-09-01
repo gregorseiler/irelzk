@@ -17,7 +17,7 @@ static inline void poly_shift(poly *r, const poly *a, int i) {
   else if(i == 3) poly_pointwise_montgomery(r,a,&nttx3);
 }
 
-void linear(poly *h, poly vprime[R], const polyvecm *msg, uint8_t chash[SYMBYTES]) {
+void linear(poly vprime[R], poly *h, const polyvecm *msg, uint8_t chash[SYMBYTES]) {
   int i,j;
   uint64_t nonce = 0;
   poly gamma, atgamma;

@@ -113,7 +113,7 @@ void multiplication_proof(proof *p, comm *t, commrnd *r, const uint8_t rho[SYMBY
 
     product(&v,&msg,chash);
     poly_add(&tmp,&t->tm.vec[M-2],&msg.vec[M-2]);
-    linear(&p->h,vprime,&msg,&p->l,chash+SYMBYTES);
+    linear(vprime,&p->h,&msg,&p->l,chash+SYMBYTES);
 
     shake128_init(&kecst);
     shake128_absorb(&kecst,chash,2*SYMBYTES);
