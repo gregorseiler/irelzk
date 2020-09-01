@@ -4,7 +4,7 @@ CFLAGS += -Wall -Wextra -Wpedantic -Wmissing-prototypes -Wredundant-decls \
   -march=native -mtune=native -O3
 #CFLAGS += -DUSE_RDPMC
 
-default: test_ntt test_addition test_mult test_mult2
+default: test_ntt test_addition test_mult test_mult2 test_main
 
 %_addition.o: %_addition.c params.h Makefile
 	$(CC) $(CFLAGS) -DADDITION_PROOF -c $< -o $@
@@ -23,6 +23,12 @@ default: test_ntt test_addition test_mult test_mult2
 
 %_mult.o: %.c params.h Makefile
 	$(CC) $(CFLAGS) -DMULTIPLICATION_PROOF -c $< -o $@
+
+%_main.o: %_main.c params.h Makefile
+	$(CC) $(CFLAGS) -DMAIN_PROOF -c $< -o $@
+
+%_main.o: %.c params.h Makefile
+	$(CC) $(CFLAGS) -DMAIN_PROOF -c $< -o $@
 
 %.o: %.c params.h Makefile
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -44,6 +50,9 @@ polyvecm_mult.o: polyvec.c polyvec.h params.h Makefile
 
 polyvecm_mult2.o: polyvec.c polyvec.h params.h Makefile
 	$(CC) $(CFLAGS) -DMULTIPLICATION_PROOF_2 -DPOLYVEC_TYPE=polyvecm -DPOLYVEC_LENGTH=M -c $< -o $@
+
+polyvecm_main.o: polyvec.c polyvec.h params.h Makefile
+	$(CC) $(CFLAGS) -DMAIN_PROOF -DPOLYVEC_TYPE=polyvecm -DPOLYVEC_LENGTH=M -c $< -o $@
 
 test_ntt: test_ntt.o ntt.o invntt.o consts.o rounding.o poly.o aes256ctr.o randombytes.o cpucycles.o
 	$(CC) $(CFLAGS) $^ -o $@
@@ -69,6 +78,11 @@ test_mult2: test_mult2.o ntt.o invntt.o consts.o rounding.o poly.o polyveck.o po
   aes256ctr.o fips202.o randombytes.o cpucycles.o speed_print.o
 	$(CC) $(CFLAGS) -DMULTIPLICATION_PROOF_2 $^ -o $@
 
+test_main: test_main.o ntt.o invntt.o consts.o rounding.o poly.o polyveck.o polyvecl.o \
+  polyvecm_main.o comm_main.o opening_main.o product_main.o linear_main.o main_main.o \
+  aes256ctr.o fips202.o randombytes.o cpucycles.o speed_print.o
+	$(CC) $(CFLAGS) -DMAIN_PROOF $^ -o $@
+
 clean:
 	rm -f *.o
 	rm -f test_ntt
@@ -76,3 +90,4 @@ clean:
 	rm -f test_addition
 	rm -f test_mult
 	rm -f test_mult2
+	rm -f test_main

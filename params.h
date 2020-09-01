@@ -4,6 +4,7 @@
 //#define ADDITION_PROOF
 //#define MULTIPLICATION_PROOF
 //#define MULTIPLICATION_PROOF_2
+//#define MAIN_PROOF
 
 #define NAMESPACE(s) s
 
@@ -13,6 +14,8 @@
 #define M 10
 #elif defined(MULTIPLICATION_PROOF_2)
 #define M 15
+#elif defined(MAIN_PROOF)
+#define M 19
 #endif
 
 #define N 128
